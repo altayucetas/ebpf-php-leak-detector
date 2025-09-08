@@ -1,57 +1,40 @@
-# php-leak-detector
 
-## Prerequisites
+# eBPF PHP Leak Detector
 
-1. stable rust toolchains: `rustup toolchain install stable`
-1. nightly rust toolchains: `rustup toolchain install nightly --component rust-src`
-1. (if cross-compiling) rustup target: `rustup target add ${ARCH}-unknown-linux-musl`
-1. (if cross-compiling) LLVM: (e.g.) `brew install llvm` (on macOS)
-1. (if cross-compiling) C toolchain: (e.g.) [`brew install filosottile/musl-cross/musl-cross`](https://github.com/FiloSottile/homebrew-musl-cross) (on macOS)
-1. bpf-linker: `cargo install bpf-linker` (`--no-default-features` on macOS)
+This project is a debugging tool designed to dynamically detect memory management issues within PHP extensions using eBPF technology. It traces the Zend Engine's memory manager to find common bugs originating from native C code.
 
-## Build & Run
+The tool detects several types of memory errors:
 
-Use `cargo build`, `cargo check`, etc. as normal. Run your program with:
+- ```Memory Leak```: Identifies allocated memory that is never freed by the end of the script's execution.
 
-```shell
-cargo run --release --config 'target."cfg(all())".runner="sudo -E"'
+- ```Double Free```: Catches attempts to free the same memory pointer more than once.
+
+- ```Mismatched Free```: Reports the use of an incorrect deallocation function for a given allocation type (e.g., using efree on a pemalloc pointer).
+
+**Note 1**: The tool automatically discovers all exported functions within a target extension's .so file using _nm_ tool. Tracing is only active when the execution flow is inside one of these discovered functions, which filters out noise from the PHP core.
+
+**Note 2**: To capture the extension, you need to perform routine steps. The extension must be compiled, added to the php.ini file, and copied to the extension folder. Only after these can the program be run properly.
+
+The flow of the program is as follows.
+
+### 1. Scoping
+
+In this phase, the userspace program inspects the target extension's shared object file with nm to identify all exported zif_* and zm_* functions. _uprobes_ are attached to the entry and exit points of these functions. When execution enters an extension function, a flag is set for the current thread ID, activating the memory tracking. When it exits, the flag is cleared. This ensures that only memory operations performed by the extension are analyzed.
+
+### 2. Real-time Memory Tracking
+
+While the "in-extension" flag is active, uprobes on PHP's memory functions (_emalloc, _efree, etc.) start tracking activity. All new allocations are stored as entries in an eBPF map, keyed by their memory address. When a free operation occurs, the tool checks the map. If the address exists, it's removed. If it doesn't exist, it's flagged as a **Double Free**. A check is also performed to ensure the deallocation function matches the allocation type or is flagged as a **Mismatched Free**. All detected corruptions are immediately sent to a separate map for later reporting.
+
+### 3. Memory Operation Analysis
+
+After the target PHP process has completed its work and the user stops the tool (Ctrl+C), the userspace program performs a final check. It iterates through any remaining entries in the allocations map. Since these allocations were never freed, they are flagged as memory leaks. Finally, all collected leak and corruption data is processed, symbolized, and printed to the console in a detailed report.
+
+### How to Run
+
 ```
+sudo /path/to/your/php-leak-detector \
+    --php-path /path/to/your/php \
+    --extension-path /path/to/your/php/extensions/**/extension.so \
+    --libc-path /path/to/your/libc.so.6
 
-Cargo build scripts are used to automatically build the eBPF correctly and include it in the
-program.
-
-## Cross-compiling on macOS
-
-Cross compilation should work on both Intel and Apple Silicon Macs.
-
-```shell
-CC=${ARCH}-linux-musl-gcc cargo build --package php-leak-detector --release \
-  --target=${ARCH}-unknown-linux-musl \
-  --config=target.${ARCH}-unknown-linux-musl.linker=\"${ARCH}-linux-musl-gcc\"
 ```
-The cross-compiled program `target/${ARCH}-unknown-linux-musl/release/php-leak-detector` can be
-copied to a Linux server or VM and run there.
-
-## License
-
-With the exception of eBPF code, php-leak-detector is distributed under the terms
-of either the [MIT license] or the [Apache License] (version 2.0), at your
-option.
-
-Unless you explicitly state otherwise, any contribution intentionally submitted
-for inclusion in this crate by you, as defined in the Apache-2.0 license, shall
-be dual licensed as above, without any additional terms or conditions.
-
-### eBPF
-
-All eBPF code is distributed under either the terms of the
-[GNU General Public License, Version 2] or the [MIT license], at your
-option.
-
-Unless you explicitly state otherwise, any contribution intentionally submitted
-for inclusion in this project by you, as defined in the GPL-2 license, shall be
-dual licensed as above, without any additional terms or conditions.
-
-[Apache license]: LICENSE-APACHE
-[MIT license]: LICENSE-MIT
-[GNU General Public License, Version 2]: LICENSE-GPL2
