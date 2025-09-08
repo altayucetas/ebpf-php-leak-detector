@@ -15,7 +15,7 @@ The tool detects several types of memory errors:
 
 **Note 2**: To capture the extension, you need to perform routine steps. The extension must be compiled, added to the php.ini file, and copied to the extension folder. Only after these can the program be run properly.
 
-**Note 3**: *calloc functions call *malloc functions internally, so they appear to be normal *malloc calls. To avoid this problem, *malloc calls are ignored inside *calloc.
+**Note 3**: *calloc functions call *malloc functions internally, so they appear to be normal *malloc calls. To avoid this problem, *malloc calls are ignored inside *calloc calls.
 
 The flow of the program is as follows.
 
