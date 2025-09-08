@@ -28,6 +28,7 @@ enum MemoryCorruptionTypes {
     DOUBLE_FREE_PEFREE = 1,
     MISMATCHED_EFREE = 2,
     MISMATCHED_PEFREE = 3,
+    USE_AFTER_FREE = 4,
 }
 
 /*-----------------------------------------------STRUCTS-----------------------------------------------------*/
@@ -354,7 +355,7 @@ pub fn uretprobe_emalloc(ctx: RetProbeContext) -> u32 {
                         let _ = CALL_PTR_CONNECTION.remove(&pid);
                         info!(&ctx, "[eBPF] emalloc return called with PID: {} and pointer: 0x{:x}, size: {}", pid, ptr, size);
                     }
-                    
+                    let _ = FREED_POINTERS.remove(&ptr);
                 }
                 
             }
@@ -389,7 +390,7 @@ pub fn uretprobe_pemalloc(ctx: RetProbeContext) -> u32 {
                         let _ = CALL_PTR_CONNECTION.remove(&pid);
                         info!(&ctx, "[eBPF] pemalloc return called with PID: {} and pointer: 0x{:x}, size: {}", pid, ptr, size);
                     }
-                    
+                    let _ = FREED_POINTERS.remove(&ptr);
                 }
             }
         }
@@ -418,8 +419,9 @@ pub fn uretprobe_ecalloc(ctx: RetProbeContext) -> u32 {
                         let _ = ALLOCATIONS.insert(&ptr, &allocation, 0);
                         let _ = CALL_PTR_CONNECTION.remove(&pid);
                         let _ = CHECK_CALLOC.remove(&pid);
+                        info!(&ctx, "[eBPF] ecalloc return called with PID: {} and pointer: 0x{:x}", pid, ptr);
                     }
-                    info!(&ctx, "[eBPF] ecalloc return called with PID: {} and pointer: 0x{:x}", pid, ptr);
+                    let _ = FREED_POINTERS.remove(&ptr);
                 }
             }
         }
@@ -448,8 +450,9 @@ pub fn uretprobe_pecalloc(ctx: RetProbeContext) -> u32 {
                         let _ = ALLOCATIONS.insert(&ptr, &allocation, 0);
                         let _ = CALL_PTR_CONNECTION.remove(&pid);
                         let _ = CHECK_CALLOC.remove(&pid);
+                        info!(&ctx, "[eBPF] pecalloc return called with PID: {} and pointer: 0x{:x}", pid, ptr);
                     }
-                    info!(&ctx, "[eBPF] pecalloc return called with PID: {} and pointer: 0x{:x}", pid, ptr);
+                    let _ = FREED_POINTERS.remove(&ptr);
                 }
             }
         }
@@ -586,6 +589,98 @@ pub fn uprobe_extension_exit(ctx: RetProbeContext) -> u32 {
     info!(&ctx, "[eBPF] extension exit called, current PID: {}", pid);
 
     let _ = THREAD_IN_EXTENSION.remove(&pid);
+
+    0
+}
+
+/*-----------------------------------------------LIBC HOOKS-----------------------------------------------------*/
+
+#[uprobe]
+pub fn uprobe_sprintf(ctx: ProbeContext) -> u32 {
+    if let Some(ptr) = ctx.arg::<u64>(0) {
+        let pid = ctx.pid();
+        unsafe {
+            if THREAD_IN_EXTENSION.get(&pid).is_some() {
+                if ptr != 0 {
+                    if let Some(_) = FREED_POINTERS.get(&ptr) {
+                        let _ = MEMORY_CORRUPTIONS_PTR_CONNECTION.insert(&2, &ptr, 0);
+                        info!(&ctx, "[eBPF] sprintf called with PID: {} and pointer: 0x{:x}, and use after free detected", pid, ptr);
+                    }
+                }
+            }
+        }
+    }
+
+    0
+}
+
+#[uretprobe]
+pub fn uretprobe_sprintf(ctx: RetProbeContext) -> u32 {
+    let pid = ctx.pid();
+    unsafe {
+        if THREAD_IN_EXTENSION.get(&pid).is_some() {
+            if let Some(ptr) = MEMORY_CORRUPTIONS_PTR_CONNECTION.get(&2) {
+                let ptr = *ptr;
+                if ptr != 0 {
+                    let stack_id = get_stack_trace(&ctx);
+                    let memory_corruption = MemoryCorruptionInfo {
+                        corruption_type: MemoryCorruptionTypes::USE_AFTER_FREE as u32,
+                        pointer: ptr,
+                        pid,
+                        stack_id,
+                    };
+                    let _ = MEMORY_CORRUPTIONS_PTR_CONNECTION.remove(&2);
+                    let _ = MEMORY_CORRUPTIONS.insert(&ptr, &memory_corruption, 0);
+                    info!(&ctx, "[eBPF] sprintf return called with PID: {} and pointer: 0x{:x}, and use after free added", pid, ptr);
+                }
+            }
+        }
+    }
+
+    0
+}
+
+#[uprobe]
+pub fn uprobe_strtok(ctx: ProbeContext) -> u32 {
+    if let Some(ptr) = ctx.arg::<u64>(0) {
+        let pid = ctx.pid();
+        unsafe {
+            if THREAD_IN_EXTENSION.get(&pid).is_some() {
+                if ptr != 0 {
+                    if let Some(_) = FREED_POINTERS.get(&ptr) {
+                        let _ = MEMORY_CORRUPTIONS_PTR_CONNECTION.insert(&2, &ptr, 0);
+                        info!(&ctx, "[eBPF] strtok called with PID: {} and pointer: 0x{:x}, and use after free detected", pid, ptr);
+                    }
+                }
+            }
+        }
+    }
+
+    0
+}
+
+#[uretprobe]
+pub fn uretprobe_strtok(ctx: RetProbeContext) -> u32 {
+    let pid = ctx.pid();
+    unsafe {
+        if THREAD_IN_EXTENSION.get(&pid).is_some() {
+            if let Some(ptr) = MEMORY_CORRUPTIONS_PTR_CONNECTION.get(&2) {
+                let ptr = *ptr;
+                if ptr != 0 {
+                    let stack_id = get_stack_trace(&ctx);
+                    let memory_corruption = MemoryCorruptionInfo {
+                        corruption_type: MemoryCorruptionTypes::USE_AFTER_FREE as u32,
+                        pointer: ptr,
+                        pid,
+                        stack_id,
+                    };
+                    let _ = MEMORY_CORRUPTIONS_PTR_CONNECTION.remove(&2);
+                    let _ = MEMORY_CORRUPTIONS.insert(&ptr, &memory_corruption, 0);
+                    info!(&ctx, "[eBPF] strtok return called with PID: {} and pointer: 0x{:x}, and use after free added", pid, ptr);
+                }
+            }
+        }
+    }
 
     0
 }

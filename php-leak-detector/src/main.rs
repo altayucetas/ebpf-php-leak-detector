@@ -31,7 +31,7 @@ struct Opt {
 
 const DEFAULT_LIBC_PATH: &str = "/lib/x86_64-linux-gnu/libc.so.6";
 const DEFAULT_PHP_PATH: &str = "/root/Tools/php/bin/php";
-const DEFAULT_EXTENSION_PATH: &str = "/root/Tools/php/lib/php/extensions/debug-non-zts-20240924/emalloc_test.so";
+const DEFAULT_EXTENSION_PATH: &str = "/root/Tools/php/lib/php/extensions/debug-non-zts-20240924/php_leak_test.so";
 const DEFAULT_POOL_TIME: u64 = 10;
 
 /*-----------------------------------------------STRUCTS-----------------------------------------------------*/
@@ -163,6 +163,7 @@ fn print_memory_corruption_information(memory_corruptions: &HashMap<&aya::maps::
                     1 => "DOUBLE_FREE_PEFREE",
                     2 => "MISMATCHED_EFREE",
                     3 => "MISMATCHED_PEFREE",
+                    4 => "USE_AFTER_FREE",
                     _ => "UNKNOWN",
                 };
 
@@ -408,6 +409,29 @@ fn load_probes(ebpf: &mut aya::Ebpf, pid: Option<i32>, php_path: &str, libc_path
     Ok(())
 }
 
+fn load_libc_probes(ebpf: &mut aya::Ebpf, pid: Option<i32>, libc_path: &str) -> anyhow::Result<()> {
+
+    /*----------------------------------------LIBC HOOKS----------------------------------------------*/
+
+    let program_sprintf: &mut UProbe = ebpf.program_mut("uprobe_sprintf").unwrap().try_into()?;
+    program_sprintf.load()?;
+    program_sprintf.attach(Some("sprintf"), 0, libc_path, pid)?;
+
+    let program_sprintf_ret: &mut UProbe = ebpf.program_mut("uretprobe_sprintf").unwrap().try_into()?;
+    program_sprintf_ret.load()?;
+    program_sprintf_ret.attach(Some("sprintf"), 0, libc_path, pid)?;
+
+    let program_strtok: &mut UProbe = ebpf.program_mut("uprobe_strtok").unwrap().try_into()?;
+    program_strtok.load()?;
+    program_strtok.attach(Some("strtok"), 0, libc_path, pid)?;
+
+    let program_strtok_ret: &mut UProbe = ebpf.program_mut("uretprobe_strtok").unwrap().try_into()?;
+    program_strtok_ret.load()?;
+    program_strtok_ret.attach(Some("strtok"), 0, libc_path, pid)?;
+
+    Ok(())
+}
+
 fn resolve_address_to_symbol(address: u64, proc_maps: &[ProcMapInfo], is_memory_corruption: u32) -> String {
     for map in proc_maps {
         if address >= map.start_address && address < map.end_address {
@@ -502,6 +526,7 @@ async fn main() -> anyhow::Result<()> {
 
     load_probes(&mut ebpf, opt.pid, &opt.php_path, &opt.libc_path)?;
     load_extension_functions(&mut ebpf, opt.pid, &opt.extension_path)?;
+    load_libc_probes(&mut ebpf, opt.pid, &opt.libc_path)?;
 
     let allocations: HashMap<_, u64, Allocation> = HashMap::try_from(
         ebpf.map("ALLOCATIONS").ok_or(anyhow::anyhow!("ALLOCATIONS map not found"))?

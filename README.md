@@ -11,6 +11,8 @@ The tool detects several types of memory errors:
 
 - ```Mismatched Free```: Reports the use of an incorrect deallocation function for a given allocation type (e.g., using efree on a pemalloc pointer).
 
+- ```Use-after-Free```: Detects read or write operations on a memory pointer that has already been freed. 
+
 **Note 1**: The tool automatically discovers all exported functions within a target extension's .so file using _nm_ tool. Tracing is only active when the execution flow is inside one of these discovered functions, which filters out noise from the PHP core.
 
 **Note 2**: To capture the extension, you need to perform routine steps. The extension must be compiled, added to the php.ini file, and copied to the extension folder. Only after these can the program be run properly.
@@ -25,11 +27,11 @@ In this phase, the userspace program inspects the target extension's shared obje
 
 ### 2. Real-time Memory Tracking
 
-While the "in-extension" flag is active, uprobes on PHP's memory functions (_emalloc, _efree, etc.) start tracking activity. All new allocations are stored as entries in an eBPF map, keyed by their memory address. When a free operation occurs, the tool checks the map. If the address exists, it's removed. If it doesn't exist, it's flagged as a **Double Free**. A check is also performed to ensure the deallocation function matches the allocation type or is flagged as a **Mismatched Free**. All detected corruptions are immediately sent to a separate map for later reporting.
+While the "in-extension" flag is active, uprobes on PHP's memory functions (*_emalloc*, *_efree*, etc.) and various libc functions (e.g., *strtok*, *sprintf*) track activity.  All new allocations are stored as entries in an eBPF map, keyed by their memory address. When a free operation occurs, its pointer is added to *FREED_POINTERS* map and the tool checks the *ALLOCATIONS* map. If the address exists, it is removed. If it doesn't exist, it is flagged as a **Double Free**. A check is also performed to ensure the deallocation function matches the allocation type or is flagged as a **Mismatched Free**. During calls to hooked libc functions, the tool flags a **Use-after-Free** if a pointer argument corresponds to a memory address that has already been in *FREED_POINTERS*. All detected corruptions are immediately sent to a separate map for later reporting.
 
 ### 3. Memory Operation Analysis
 
-After the target PHP process has completed its work and the user stops the tool (Ctrl+C), the userspace program performs a final check. It iterates through any remaining entries in the allocations map. Since these allocations were never freed, they are flagged as memory leaks. Finally, all collected leak and corruption data is processed, symbolized, and printed to the console in a detailed report.
+After the target PHP process has completed its work and the user stops the tool (Ctrl+C), the userspace program performs a final check. It iterates through any remaining entries in the *ALLOCATIONS* map. Since these allocations were never freed, they are flagged as memory leaks. Finally, all collected leak and corruption data is processed, symbolized, and printed to the console in a detailed report.
 
 ### How to Run
 
