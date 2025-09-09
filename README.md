@@ -19,6 +19,15 @@ The tool detects several types of memory errors:
 
 **Note 3**: *calloc functions call *malloc functions internally, so they appear to be normal *malloc calls. To avoid this problem, *malloc calls are ignored inside *calloc calls.
 
+**Note 4**: The repo contains a test folder. This folder contains an extension written for testing the code. It can be compiled with the following command. To use the plugin after compiling, add **extension=php_leak_test.so** to the php.ini file.
+
+```
+[PHP Folder Path]/bin/phpize && \
+./configure --with-php-config=[PHP Folder Path]/bin/php-config && \
+make && \
+cp modules/php_leak_test.so $([PHP Folder Path]/bin/php-config --extension-dir)
+```
+
 The flow of the program is as follows.
 
 ### 1. Scoping
