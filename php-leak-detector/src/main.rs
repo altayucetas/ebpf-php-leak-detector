@@ -90,6 +90,17 @@ fn return_operation(opcode: u32) -> String {
     }
 }
 
+fn return_corruption_type(corruption_type: u32) -> String {
+    match corruption_type {
+        0 => "DOUBLE_FREE_EFREE".into(),
+        1 => "DOUBLE_FREE_PEFREE".into(),
+        2 => "MISMATCHED_EFREE".into(),
+        3 => "MISMATCHED_PEFREE".into(),
+        4 => "USE_AFTER_FREE".into(),
+        _ => "UNKNOWN".into(),
+    }
+}
+
 fn parse_proc_maps(pid: u32, extension_path: &str) -> anyhow::Result<Vec<ProcMapInfo>> {
 
     let maps_path = format!("/proc/{}/maps", pid);
@@ -158,14 +169,8 @@ fn print_memory_corruption_information(memory_corruptions: &HashMap<&aya::maps::
     for memory_corruption in memory_corruptions.iter() {
         match memory_corruption {
             Ok((_ptr, memory_corruption)) => {
-                let corruption_type = match memory_corruption.corruption_type {
-                    0 => "DOUBLE_FREE_EFREE",
-                    1 => "DOUBLE_FREE_PEFREE",
-                    2 => "MISMATCHED_EFREE",
-                    3 => "MISMATCHED_PEFREE",
-                    4 => "USE_AFTER_FREE",
-                    _ => "UNKNOWN",
-                };
+
+                let corruption_type = return_corruption_type(memory_corruption.corruption_type);
 
                 let proc_maps = match pid_proc_maps.get(&memory_corruption.pid) {
                     Some(maps) => maps,
@@ -313,12 +318,6 @@ fn get_extension_functions(extension_path: &str) -> ExtensionFunctions {
         .output()
         .expect("Failed to execute command");
 
-    /*let output = Command::new("sh")
-        .arg("-c")
-        .arg(format!("nm -D {} | grep zif", extension_path))
-        .output()
-        .expect("Failed to execute command");*/
-
     if output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout);
 
@@ -401,10 +400,6 @@ fn load_probes(ebpf: &mut aya::Ebpf, pid: Option<i32>, php_path: &str, libc_path
     let program_efree_ret: &mut UProbe = ebpf.program_mut("uretprobe_efree").unwrap().try_into()?;
     program_efree_ret.load()?;
     program_efree_ret.attach(Some("_efree"), 0, php_path, pid)?;
-
-    /*let program_pefree_ret: &mut UProbe = ebpf.program_mut("uretprobe_pefree").unwrap().try_into()?;
-    program_pefree_ret.load()?;
-    program_pefree_ret.attach(Some("free"), 0, libc_path, pid)?;*/
 
     Ok(())
 }

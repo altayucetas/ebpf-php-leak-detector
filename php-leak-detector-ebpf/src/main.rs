@@ -554,33 +554,6 @@ pub fn uretprobe_efree(ctx: RetProbeContext) -> u32 {
     0
 }
 
-/*#[uretprobe]
-pub fn uretprobe_pefree(ctx: RetProbeContext) -> u32 {
-    let pid = ctx.pid();
-    unsafe {
-        if THREAD_IN_EXTENSION.get(&pid).is_some() {
-            if let Some(ptr) = MEMORY_CORRUPTIONS_PTR_CONNECTION.get(&1) {
-                let ptr = *ptr;
-                if ptr != 0 {
-                    let stack_id = get_stack_trace(&ctx);
-                    let memory_corruption = MemoryCorruptionInfo {
-                        corruption_type: MemoryCorruptionTypes::MISMATCHED_PEFREE as u32,
-                        pointer: ptr,
-                        pid,
-                        stack_id,
-                    };
-                    let _ = MEMORY_CORRUPTIONS_PTR_CONNECTION.remove(&1);
-                    let _ = MEMORY_CORRUPTIONS.insert(&ptr, &memory_corruption, 0);
-                    info!(&ctx, "[eBPF] pefree return called with PID: {} and pointer: 0x{:x}, and mismatched pefree added", pid, ptr);
-                }
-            
-            }
-            info!(&ctx, "[eBPF] pefree return called with PID: {}", pid);
-        }
-    }
-    0
-}*/
-
 #[uretprobe]
 pub fn uprobe_extension_exit(ctx: RetProbeContext) -> u32 {
 
