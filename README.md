@@ -28,6 +28,18 @@ make && \
 cp modules/php_leak_test.so $([PHP Folder Path]/bin/php-config --extension-dir)
 ```
 
+**Note 5**: The program was tested with 8.4.12 version PHP compiled with the following flags.
+```
+    --prefix=[PHP Location]
+    --enable-debug
+    --enable-fpm
+    --enable-dtrace
+    --with-openssl
+    --with-zlib
+    --enable-mbstring
+    --with-curl
+```
+
 The flow of the program is as follows.
 
 ### 1. Scoping
