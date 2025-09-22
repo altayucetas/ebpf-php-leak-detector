@@ -11,7 +11,14 @@ The tool detects several types of memory errors:
 
 - ```Mismatched Free```: Reports the use of an incorrect deallocation function for a given allocation type (e.g., using efree on a pemalloc pointer).
 
-- ```Use-after-Free```: Detects read or write operations on a memory pointer that has already been freed. 
+- ```Use-after-Free```: Detects read or write operations on a memory pointer that has already been freed.
+
+### Project Demo
+
+
+https://github.com/user-attachments/assets/1cdc143e-2798-40b0-b468-8e1300190686
+
+
 
 **Note 1**: The tool automatically discovers all exported functions within a target extension's .so file using _nm_ tool. Tracing is only active when the execution flow is inside one of these discovered functions, which filters out noise from the PHP core.
 
